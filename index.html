@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>CAD Kernels Explained — What Your CAM Software Actually Does to Your Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Barlow+Condensed:wght@300;700;900&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CSS 1: CUSTOM PROPERTIES
+   ============================================================ */
+:root {
+  --bg-void: #0a0b0d;
+  --bg-surface: #111318;
+  --bg-raised: #1a1d24;
+  --text-primary: #e8eaed;
+  --text-secondary: #8a9099;
+  --text-dim: #4a5260;
+  --accent: #2eb8a0;
+  --accent-dim: #0d3530;
+  --accent-bright: #3eddb8;
+  --accent-red: #2eb8a0;
+  --accent-red-dim: #0d3530;
+  --accent-teal: #2eb8a0;
+  --accent-teal-dim: #0d3530;
+  --accent-amber: #e8eaed;
+  --accent-amber-dim: #1a1d24;
+  --rule: #1f2430;
+  --rule-bright: #2e3545;
+  --font-head: 'Barlow Condensed', sans-serif;
+  --font-body: 'IBM Plex Mono', monospace;
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* ============================================================
+   CSS 2: RESET + BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;color-scheme:dark;scroll-behavior:smooth}
+body{
+  font-family:var(--font-body);background:var(--bg-void);
+  color:var(--text-primary);line-height:1.7;
+  background-image:
+    linear-gradient(var(--rule) 1px,transparent 1px),
+    linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:20px 20px;
+}
+h1,h2,h3{font-family:var(--font-head);font-weight:900;letter-spacing:0.04em;text-transform:uppercase;line-height:1.15}
+h1{font-size:clamp(2.2rem,8vw,4.5rem);color:var(--text-primary)}
+h2{font-size:clamp(1.6rem,5vw,2.8rem);color:var(--accent-teal);margin-bottom:1rem}
+h3{font-size:clamp(1.1rem,3vw,1.5rem);font-weight:700;color:var(--text-secondary);margin-bottom:0.5rem}
+p{margin-bottom:1rem;max-width:65ch}
+a{color:var(--accent-teal);text-decoration:none}
+a:hover{text-decoration:underline}
+strong{color:var(--accent-amber)}
+em{color:var(--accent-teal);font-style:normal}
+code{background:var(--bg-raised);padding:0.1em 0.4em;border-radius:3px;font-size:0.9em}
+.js-only{display:none}.js-ready .js-only{display:block}
+
+/* ============================================================
+   CSS 3: LAYOUT
+   ============================================================ */
+.page{max-width:1100px;margin:0 auto;padding:0 1.25rem}
+section{min-height:100dvh;padding:3rem 0;border-left:2px solid var(--accent-red-dim);padding-left:1.25rem;transition:border-color 0.4s var(--ease)}
+section.in-view{border-left-color:var(--accent-teal)}
+
+/* ============================================================
+   CSS 4: NAVIGATION
+   ============================================================ */
+nav{position:sticky;top:0;z-index:100;background:rgba(10,11,13,0.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule);padding:0.6rem 1.25rem;display:flex;align-items:center;gap:1rem}
+nav .nav-title{font-family:var(--font-head);font-weight:900;font-size:0.85rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);white-space:nowrap}
+nav .nav-links{display:flex;gap:0.5rem;flex-wrap:wrap}
+nav .nav-links a{font-size:0.7rem;color:var(--text-dim);padding:0.2rem 0.5rem;border:1px solid var(--rule);border-radius:2px;transition:all 0.2s}
+nav .nav-links a:hover,nav .nav-links a.active{color:var(--accent-teal);border-color:var(--accent-teal);text-decoration:none}
+.nav-progress{height:2px;background:var(--rule);margin-top:0.4rem;border-radius:1px;overflow:hidden}
+.nav-progress-fill{height:100%;width:0%;background:var(--accent-teal);transition:width 0.3s var(--ease)}
+
+/* ============================================================
+   CSS 5: SECTION DIVIDER
+   ============================================================ */
+.divider{padding:2rem 0;opacity:0.5}
+.divider svg{width:100%;max-width:600px;height:12px}
+
+/* ============================================================
+   CSS 6: HERO / VALIDITY DISPLAY
+   ============================================================ */
+.validity-display{background:var(--bg-surface);border:1px solid var(--rule);border-radius:4px;padding:1rem;margin:1.5rem 0;font-size:0.75rem;max-width:420px}
+.validity-row{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem}
+.validity-label{width:120px;color:var(--text-secondary);flex-shrink:0}
+.validity-bar{flex:1;height:6px;background:var(--bg-raised);border-radius:3px;overflow:hidden}
+.validity-bar-fill{height:100%;width:0%;background:var(--accent-teal);border-radius:3px;transition:width 1.2s var(--ease)}
+.validity-count{width:60px;text-align:right;color:var(--text-dim)}
+.validity-ok{color:var(--accent-teal);font-weight:600;width:24px}
+.validity-tolerance{color:var(--text-dim);margin-top:0.5rem;font-size:0.7rem;letter-spacing:0.05em}
+
+/* ============================================================
+   CSS 7: FAILURE MODES
+   ============================================================ */
+.failure-grid{display:grid;grid-template-columns:1fr;gap:1rem;margin:1.5rem 0}
+@media(min-width:600px){.failure-grid{grid-template-columns:1fr 1fr}}
+.failure-card{background:var(--bg-surface);border:1px solid var(--rule);border-left:3px solid var(--accent);padding:1rem;border-radius:2px}
+.failure-card h3{color:var(--text-primary);font-size:0.85rem;margin-bottom:0.3rem}
+.failure-card p{font-size:0.8rem;color:var(--text-secondary);margin:0}
+.failure-card .cause{font-size:0.7rem;color:var(--accent);margin-top:0.4rem}
+
+/* ============================================================
+   CSS 8: DIAGRAMS
+   ============================================================ */
+.diagram-wrap{background:var(--bg-surface);border:1px solid var(--rule);border-radius:4px;padding:1rem;margin:1.5rem 0;text-align:center}
+.diagram-wrap canvas{max-width:100%;border:1px solid var(--rule-bright)}
+.diagram-label{font-size:0.7rem;color:var(--text-dim);margin-top:0.5rem;letter-spacing:0.05em}
+.slider-row{display:flex;align-items:center;gap:0.75rem;margin-top:0.75rem;flex-wrap:wrap}
+.slider-row label{font-size:0.7rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.4rem}
+.slider-row input[type=range]{width:140px;accent-color:var(--accent-teal)}
+.slider-val{color:var(--accent-teal);min-width:2em;font-size:0.75rem}
+.paradigm-grid{display:grid;grid-template-columns:1fr;gap:1.5rem;margin:1.5rem 0}
+@media(min-width:700px){.paradigm-grid{grid-template-columns:1fr 1fr}}
+.paradigm-card{background:var(--bg-surface);border:1px solid var(--rule);padding:1.25rem;border-radius:2px}
+.paradigm-card h3{margin-bottom:0.5rem}
+.paradigm-card p{font-size:0.8rem;color:var(--text-secondary);margin:0}
+.paradigm-tag{display:inline-block;font-size:0.6rem;padding:0.15rem 0.4rem;border-radius:2px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem}
+.tag-brep{background:var(--accent-dim);color:var(--accent)}
+.tag-sdf{background:var(--accent-dim);color:var(--accent)}
+.tag-nurbs{background:var(--accent-dim);color:var(--accent)}
+
+/* ============================================================
+   CSS 9: ECOSYSTEM GRAPH
+   ============================================================ */
+.graph-container{position:relative;margin:1.5rem 0}
+.graph-svg{width:100%;height:auto;min-height:400px;touch-action:none}
+.graph-svg .node-circle{cursor:pointer;transition:filter 0.15s}
+.graph-svg .node-circle:hover{filter:brightness(1.3) drop-shadow(0 0 6px rgba(46,184,160,0.4))}
+.graph-svg .node-label{pointer-events:none;font-family:var(--font-body);fill:var(--text-primary)}
+.graph-svg .node-type{pointer-events:none;font-family:var(--font-body);fill:var(--text-dim)}
+.graph-svg .edge{fill:none;stroke:var(--rule-bright);stroke-width:1.2;opacity:0.6}
+.graph-svg .edge.highlighted{stroke:var(--accent-teal);opacity:1;stroke-width:2}
+#graph-panel{position:fixed;right:0;top:0;width:280px;height:100dvh;background:var(--bg-surface);border-left:1px solid var(--rule);padding:1.25rem;transform:translateX(100%);transition:transform 0.25s var(--ease);z-index:200;overflow-y:auto}
+#graph-panel.open{transform:translateX(0)}
+#graph-panel h3{color:var(--accent-teal);margin-bottom:0.5rem;font-size:1.1rem}
+#graph-panel .panel-meta{font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem}
+#graph-panel .panel-desc{font-size:0.8rem;color:var(--text-primary);line-height:1.6}
+#graph-panel .panel-close{position:absolute;top:0.75rem;right:0.75rem;background:none;border:1px solid var(--rule);color:var(--text-dim);font-size:1rem;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:2px}
+#graph-panel .panel-close:hover{border-color:var(--accent-red);color:var(--accent-red)}
+#graph-panel .panel-list{list-style:none;font-size:0.75rem;color:var(--text-dim)}
+#graph-panel .panel-list li{padding:0.2rem 0;border-bottom:1px solid var(--rule)}
+@media(max-width:500px){#graph-panel{width:100%;top:auto;bottom:0;height:50dvh;transform:translateY(100%);border-left:none;border-top:1px solid var(--rule)}#graph-panel.open{transform:translateY(0)}}
+.graph-legend{display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:1rem;font-size:0.65rem;color:var(--text-dim)}
+.graph-legend span{display:flex;align-items:center;gap:0.3rem}
+.graph-legend .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ============================================================
+   CSS 10: COMPARISON TABLE
+   ============================================================ */
+.table-wrap{overflow-x:auto;margin:1.5rem 0;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:0.75rem;min-width:600px}
+thead{background:var(--bg-raised)}
+th{padding:0.7rem 0.6rem;text-align:left;cursor:pointer;user-select:none;color:var(--text-secondary);font-weight:600;border-bottom:2px solid var(--rule-bright);white-space:nowrap;transition:color 0.15s}
+th:hover{color:var(--accent-teal)}
+th[aria-sort="ascending"],th[aria-sort="descending"]{color:var(--accent-teal)}
+th::after{content:" \2195";opacity:0.3;font-size:0.8em}
+th[aria-sort="ascending"]::after{content:" \2191";opacity:1}
+th[aria-sort="descending"]::after{content:" \2193";opacity:1}
+td{padding:0.6rem;border-bottom:1px solid var(--rule);color:var(--text-secondary)}
+tbody tr{transition:background 0.1s}
+tbody tr:hover{background:var(--bg-raised)}
+.badge{display:inline-block;padding:0.1rem 0.4rem;border-radius:2px;font-size:0.65rem;letter-spacing:0.03em}
+.badge-brep{background:var(--accent-dim);color:var(--accent)}
+.badge-sdf{background:var(--bg-raised);color:var(--text-secondary)}
+.badge-yes{color:var(--accent)}
+.badge-no{color:var(--text-dim)}
+.badge-api{color:var(--text-secondary)}
+.maturity{color:var(--accent)}
+
+/* ============================================================
+   CSS 11: RESPONSIVE
+   ============================================================ */
+@media(min-width:600px){section{padding-left:2rem}}
+@media(max-width:400px){h1{font-size:2rem}h2{font-size:1.4rem}nav .nav-title{display:none}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ============================================================
+     NAV
+     ============================================================ -->
+<nav>
+  <span class="nav-title">CAD Kernels</span>
+  <div class="nav-links">
+    <a href="#s1">Hook</a>
+    <a href="#s2">Math</a>
+    <a href="#s3">Ecosystem</a>
+    <a href="#s4">New Wave</a>
+    <a href="#s5">CAM</a>
+  </div>
+</nav>
+<div class="nav-progress"><div class="nav-progress-fill" id="progressFill"></div></div>
+
+<!-- ============================================================
+     SECTION 1: THE FILE THAT BROKE YOUR TOOLPATH
+     ============================================================ -->
+<section id="s1">
+<h1>The File That Broke<br>Your Toolpath</h1>
+<p style="font-family:var(--font-head);font-weight:300;font-size:clamp(1rem,3vw,1.3rem);color:var(--text-secondary);margin:1rem 0 2rem">
+Every toolpath you've ever programmed started as geometry stored in a mathematical structure called a <em>kernel</em>. This is how it works — and why it sometimes doesn't.
+</p>
+
+<div class="failure-grid">
+  <div class="failure-card">
+    <h3>Missing Faces on Import</h3>
+    <p>STEP file looks fine in SolidWorks. Open it in Mastercam — a face is gone.</p>
+    <div class="cause">Kernel cause: Boolean intersection produced a degenerate edge during STEP translation between two different B-rep kernels</div>
+  </div>
+  <div class="failure-card">
+    <h3>Knife Edges / Zero-Thickness</h3>
+    <p>The model checks out visually. The toolpath gouges into nothing.</p>
+    <div class="cause">Kernel cause: Two faces converge to zero thickness — a topology error the source kernel tolerated but yours won't</div>
+  </div>
+  <div class="failure-card">
+    <h3>Toolpath Gouging</h3>
+    <p>5-axis finish pass digs into the part on a curved surface transition.</p>
+    <div class="cause">Kernel cause: Surface normals disagree at a face boundary — the NURBS representation has a G0 discontinuity the gouge checker can't reconcile</div>
+  </div>
+  <div class="failure-card">
+    <h3>STL vs STEP Quality Gap</h3>
+    <p>The STL toolpath has facets. The STEP toolpath is glass-smooth. Same part.</p>
+    <div class="cause">Kernel cause: STL is triangulated mesh (approximation). STEP carries exact B-rep NURBS — the kernel evaluates true normals at every cutter-contact point</div>
+  </div>
+</div>
+
+<p>Every one of these is a <strong>kernel problem</strong>. The kernel is the mathematical engine inside your CAD and CAM software that stores, validates, and computes geometry. SolidWorks, Mastercam, CATIA, Fusion 360 — each has a kernel making decisions about your model thousands of times per second.</p>
+
+<div class="validity-display" id="validityBox">
+  <div class="validity-row"><span class="validity-label">EDGE VALIDITY</span><div class="validity-bar"><div class="validity-bar-fill" data-target="100"></div></div><span class="validity-count">12/12</span><span class="validity-ok">OK</span></div>
+  <div class="validity-row"><span class="validity-label">FACE NORMALS</span><div class="validity-bar"><div class="validity-bar-fill" data-target="100"></div></div><span class="validity-count">6/6</span><span class="validity-ok">OK</span></div>
+  <div class="validity-row"><span class="validity-label">VERTEX MANIFOLD</span><div class="validity-bar"><div class="validity-bar-fill" data-target="100"></div></div><span class="validity-count">8/8</span><span class="validity-ok">OK</span></div>
+  <div class="validity-tolerance">TOLERANCE &nbsp; ±0.001mm</div>
+</div>
+</section>
+
+<!-- ============================================================
+     DIVIDER
+     ============================================================ -->
+<div class="divider"><svg viewBox="0 0 600 12" preserveAspectRatio="xMidYMid meet"><line x1="0" y1="6" x2="600" y2="6" stroke="#2e3545" stroke-width="1"/><polygon points="0,6 8,3 8,9" fill="#2e3545"/><polygon points="600,6 592,3 592,9" fill="#2e3545"/><rect x="210" y="0" width="180" height="12" fill="#0a0b0d"/><text x="300" y="9" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#4a5260" letter-spacing="2">02 — MATHEMATICS</text></svg></div>
+
+<!-- ============================================================
+     SECTION 2: WHAT A CAD KERNEL ACTUALLY DOES
+     ============================================================ -->
+<section id="s2">
+<h2>Three Ways to Describe a Shape</h2>
+<p>Every CAD kernel must answer one question: <em>how do you store a 3D solid in memory?</em> There are three fundamentally different answers. Each has trade-offs that determine what your software can and can't do.</p>
+
+<div class="paradigm-grid">
+  <div class="paradigm-card">
+    <span class="paradigm-tag tag-brep">B-REP</span>
+    <h3>Boundary Representation</h3>
+    <p>A solid is defined by its boundary: <em>faces</em> (surface patches), <em>edges</em> (curves where faces meet), and <em>vertices</em> (points where edges meet). The topology (connectivity) is stored separately from the geometry (mathematical surface definitions).</p>
+    <p style="margin-top:0.5rem"><strong>This is what your STEP files contain.</strong> Parasolid, ACIS, CGM, OCCT, Granite — all B-rep kernels. Every professional CAD system uses B-rep as its primary representation.</p>
+    <p style="margin-top:0.5rem">Strengths: exact edge definitions, precise dimensions, clean toolpaths, lossless STEP export. Weakness: Booleans are hard (surface-surface intersection is where most bugs live).</p>
+  </div>
+  <div class="paradigm-card">
+    <span class="paradigm-tag tag-nurbs">NURBS</span>
+    <h3>Non-Uniform Rational B-Splines</h3>
+    <p>The mathematical language B-rep uses to define its curves and surfaces. Control points don't lie on the curve — they <em>attract</em> it. Weights control how strongly each point pulls. This is how a kernel represents a perfect circle, a fillet, or a freeform surface.</p>
+    <p style="margin-top:0.5rem"><strong>This is why fillets are smooth.</strong> Your end mill follows the evaluated NURBS curve — not a polygon approximation. The kernel computes the exact surface normal at every cutter-contact point.</p>
+    <p style="margin-top:0.5rem">Key property: local control. Moving one control point only affects the nearby region. This is why parametric edits are fast.</p>
+  </div>
+</div>
+
+<div class="paradigm-card" style="margin:1.5rem 0;border-color:var(--rule-bright)">
+  <h3>NURBS Are Math, Not a File Type</h3>
+  <p><strong>NURBS only describe curves and surfaces.</strong> They have no concept of "inside" or "outside." A NURBS surface is just a sheet floating in space — it's not a solid. B-rep adds solidity by stitching NURBS surface patches together into a closed shell with oriented normals (outward = outside).</p>
+  <p style="margin-top:0.5rem">So when you hear "B-rep kernel" — the faces of that B-rep are NURBS surfaces. The edges are NURBS curves. NURBS is the <em>language</em>; B-rep is the <em>structure</em>.</p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)"><strong>File types that carry NURBS:</strong> <code>.3dm</code> (Rhino) stores NURBS directly — can be loose surfaces, no solidity required. <code>.STEP</code> / <code>.x_t</code> / <code>.SAT</code> carry B-rep which contains NURBS as the surface/curve definitions. <code>.IGES</code> can carry either loose NURBS or B-rep solids — this ambiguity is why IGES imports are messy.</p>
+</div>
+
+<h3 style="margin-top:2rem">The Actual Math</h3>
+<div class="paradigm-card" style="margin:1rem 0">
+  <p style="font-size:0.8rem;color:var(--text-secondary)">A NURBS curve is defined by:</p>
+  <div style="background:var(--bg-raised);padding:1rem;border-radius:3px;margin:0.75rem 0;font-family:var(--font-body);font-size:0.8rem;line-height:1.9;overflow-x:auto">
+    <div><strong style="color:var(--accent)">C(u)</strong> = <strong>Σ</strong> N<sub>i,p</sub>(u) · w<sub>i</sub> · P<sub>i</sub> &nbsp;/&nbsp; <strong>Σ</strong> N<sub>i,p</sub>(u) · w<sub>i</sub></div>
+    <div style="margin-top:0.75rem;color:var(--text-dim);font-size:0.7rem">
+      P<sub>i</sub> = control points (the handles you drag in CAD)<br>
+      w<sub>i</sub> = weights (how strongly each point pulls — this is the "Rational" in NURBS)<br>
+      N<sub>i,p</sub> = B-spline basis functions of degree p (typically p=3, cubic)<br>
+      u = parameter (0→1 walks along the curve)
+    </div>
+  </div>
+  <p style="font-size:0.8rem;color:var(--text-secondary)"><strong>Why "Non-Uniform"?</strong> The knot vector controls where each basis function is active. Non-uniform spacing lets you pack more detail in one region without affecting others. Uniform = evenly spaced = less control.</p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)"><strong>Why "Rational"?</strong> The weights w<sub>i</sub> are the key. With all weights equal (w=1), you get a polynomial B-spline — it can represent freeform shapes but <em>cannot exactly represent a circle</em>. Add weights, and you can represent any conic section exactly. This is why NURBS can describe a perfect fillet radius that your end mill follows precisely.</p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)"><strong>Surfaces:</strong> A NURBS surface is the tensor product of two curves — one in u, one in v. The control points form a rectangular grid. This grid requirement is NURBS' biggest limitation.</p>
+</div>
+
+<div class="paradigm-card" style="margin:1.5rem 0;border-left:3px solid var(--accent)">
+  <span class="paradigm-tag tag-nurbs">T-SPLINES</span>
+  <h3>The NURBS Upgrade That Got Acquired</h3>
+  <p>NURBS surfaces require a <em>rectangular grid</em> of control points. Want more detail on the nose of a car? You must add an entire row and column of control points across the whole surface — even areas that don't need it. This wastes data and makes editing painful.</p>
+  <p style="margin-top:0.5rem"><strong>T-splines</strong> (Thomas Sederberg, BYU, ~2003) fix this. They allow <em>T-junctions</em> in the control mesh: you can add local detail without propagating control points globally. Think of it as "adaptive resolution" for surfaces.</p>
+  <p style="margin-top:0.5rem"><strong>Autodesk acquired T-Splines Inc in 2011</strong>, killed the popular Rhino plugin (still a sore point in the Rhino community), and integrated the technology into Fusion 360. T-splines bridge the gap between SubD modeling (used in animation/games — organic, easy to sculpt) and NURBS (used in CAD — precise, manufacturable). In Fusion 360, you sculpt in T-spline mode, then convert to NURBS B-rep for manufacturing.</p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-dim)">Sederberg's patents restricted wider adoption. Some began expiring ~2023. Whether open-source kernels will implement T-splines now is an open question.</p>
+</div>
+
+<div class="paradigm-card" style="margin:1.5rem 0">
+  <span class="paradigm-tag tag-brep">SOLID MODELING</span>
+  <h3>Solid Modeling vs Watertight B-rep</h3>
+  <p>These are related but not the same thing.</p>
+  <p style="margin-top:0.5rem"><strong>Watertight B-rep</strong> = a closed, manifold boundary. Every edge is shared by exactly two faces. No gaps, no T-junctions, no overlaps. The boundary completely encloses a volume. You can verify this with the <em>Euler-Poincaré formula</em>: <code>V − E + F = 2</code> for a simple solid (genus 0).</p>
+  <p style="margin-top:0.5rem"><strong>Solid modeling</strong> = the full system for <em>creating, validating, and manipulating</em> solids. Booleans, filleting, shelling, chamfering, mass properties (volume, center of gravity, moments of inertia), interference detection. A solid modeling kernel <em>guarantees</em> that every operation either produces a valid solid or fails cleanly — no degenerate geometry slipping through.</p>
+  <p style="margin-top:0.5rem">You CAN have a watertight B-rep without a solid modeler — manually stitch surfaces together in Rhino, close the boundary, done. But a solid modeler like Parasolid <em>guarantees</em> watertight results from every operation. That guarantee is what you're paying for when your CAD software licenses Parasolid. It's also why Booleans sometimes fail: the kernel refuses to produce an invalid result rather than giving you a broken solid.</p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">This matters for CAM: your toolpath generator assumes the model is a valid solid. If it isn't (gaps between faces, inconsistent normals), you get gouges, air cuts, or crashes. The kernel's job is to make sure that never happens.</p>
+</div>
+
+<div class="paradigm-card" style="margin:1.5rem 0">
+  <span class="paradigm-tag tag-sdf">SDF / IMPLICIT</span>
+  <h3>Signed Distance Fields</h3>
+  <p>A fundamentally different approach. Every point in space has a number: its distance to the nearest surface. Negative = inside, positive = outside, zero = on the surface. The shape <em>is</em> the zero-level set of a mathematical function.</p>
+  <p style="margin-top:0.5rem">CSG is trivially elegant: <code>union = min(a,b)</code>, <code>subtract = max(a,-b)</code>, <code>smooth blend = smin(a,b,radius)</code>. No topology headaches. No Boolean failures.</p>
+  <p style="margin-top:0.5rem"><strong>The trade-off:</strong> no explicit edges or faces. Dimensioning to a specific edge is hard. Exporting to STEP requires meshing first — information is lost. This is why SDF excels at lattices and generative design but can't replace B-rep for precision machining. <em>Yet.</em></p>
+</div>
+
+<div class="diagram-wrap js-only">
+  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <canvas id="sdfCanvas" width="120" height="120" style="width:280px;height:280px;image-rendering:pixelated"></canvas>
+      <div class="diagram-label">SDF HEATMAP — distance field</div>
+    </div>
+    <div>
+      <canvas id="contourCanvas" width="280" height="280" style="width:280px;height:280px"></canvas>
+      <div class="diagram-label">ZERO ISOLINE — the "boundary"</div>
+    </div>
+  </div>
+  <div class="slider-row">
+    <label>Blend <input type="range" id="sliderBlend" min="0" max="0.5" step="0.01" value="0.15"> <span class="slider-val" id="valBlend">0.15</span></label>
+    <label>Offset <input type="range" id="sliderOffset" min="-0.4" max="0.4" step="0.01" value="0"> <span class="slider-val" id="valOffset">0.00</span></label>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================
+     DIVIDER
+     ============================================================ -->
+<div class="divider"><svg viewBox="0 0 600 12" preserveAspectRatio="xMidYMid meet"><line x1="0" y1="6" x2="600" y2="6" stroke="#2e3545" stroke-width="1"/><polygon points="0,6 8,3 8,9" fill="#2e3545"/><polygon points="600,6 592,3 592,9" fill="#2e3545"/><rect x="210" y="0" width="180" height="12" fill="#0a0b0d"/><text x="300" y="9" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#4a5260" letter-spacing="2">03 — ECOSYSTEM</text></svg></div>
+
+<!-- ============================================================
+     SECTION 3: WHO OWNS THE STACK
+     ============================================================ -->
+<section id="s3">
+<h2>Who Owns the Stack</h2>
+<p>There are only a handful of geometry kernels in the world. A few companies control the mathematical foundations that <em>every</em> CAD and CAM application is built on.</p>
+
+<h3 style="margin-top:2rem">Not All B-rep Kernels Are Equal</h3>
+<p>Every major kernel stores faces, edges, and vertices in a half-edge data structure — but they diverge in <em>how</em> they handle the hard problems. The real differences:</p>
+
+<div class="failure-grid" style="grid-template-columns:1fr">
+  <div class="failure-card">
+    <h3>Boolean Robustness</h3>
+    <p>The #1 differentiator. When two NURBS surfaces intersect, the kernel must find the intersection curve — a notoriously fragile numerical computation. Each kernel has different tolerancing strategies, different fallback heuristics, different failure modes. This is why the same Boolean operation can succeed in SolidWorks and fail in Inventor. Same math problem, different solver.</p>
+  </div>
+  <div class="failure-card">
+    <h3>Tolerance Philosophy</h3>
+    <p><em>Parasolid</em> uses <strong>tolerant modeling</strong> — edges carry a tolerance band (typically ±0.001mm). If two surfaces don't meet exactly, the kernel approximates. This makes imports forgiving but can accumulate error. <em>ACIS</em> traditionally demands higher precision, using exact-match topology with separate healing tools for bad geometry. <em>CGM</em> uses a hybrid approach tuned for CATIA's aerospace workflows where tolerance stacking across large assemblies is the critical concern.</p>
+  </div>
+  <div class="failure-card">
+    <h3>Architecture</h3>
+    <p><em>ACIS</em> is modular — you license individual "husks" (components): modeling, booleans, blending, meshing. Your application only loads what it needs. <em>Parasolid</em> is monolithic — one library, everything included. More tightly integrated, harder to extend. <em>OCCT</em> is the most granular — 15+ packages you can mix and match.</p>
+  </div>
+  <div class="failure-card">
+    <h3>Non-Manifold Support</h3>
+    <p>Can the kernel represent geometry that doesn't exist physically? A face with no thickness, an edge shared by three faces, a wireframe floating in space. Parasolid supports this natively (Convergent Modeling). ACIS has partial support. This matters for simulation prep — FEA meshers often need non-manifold geometry that a strict solid modeler would reject.</p>
+  </div>
+</div>
+
+<h3 style="margin-top:2rem">Where the Names Come From</h3>
+<div style="font-size:0.8rem;color:var(--text-secondary);line-height:1.8;max-width:65ch">
+  <p><strong style="color:var(--text-primary)">Parasolid</strong> — "Parametric Solid." Developed by Shape Data Ltd (Cambridge, UK) in 1985 as the parametric successor to Romulus. The name signals the key innovation: geometry that remembers its construction history and can be edited by changing parameters.</p>
+  <p><strong style="color:var(--text-primary)">ACIS</strong> — Named after the Greek myth of Acis and Galatea (from Ovid's <em>Metamorphoses</em>). Unofficially also parsed as "Alan, Charles, Ian's System" — Alan Grayer, Charles Lang, and Ian Braid, the Cambridge researchers who built it. Created at Spatial Technology in 1989. The <code>.SAT</code> file format stands for "Save As Text."</p>
+  <p><strong style="color:var(--text-primary)">CGM</strong> — "Convergence Geometric Modeler." Built by Dassault in the late 1990s for CATIA V5 when they decided ACIS wasn't meeting their aerospace requirements. "Convergence" refers to unifying wireframe, surface, and solid modeling in one engine.</p>
+  <p><strong style="color:var(--text-primary)">Granite</strong> — PTC's internal name. Built for Pro/ENGINEER (1988). Never given a marketing push because PTC never licensed it externally — it's a captive kernel.</p>
+  <p><strong style="color:var(--text-primary)">Open CASCADE</strong> — Derived from Matra Datavision's CAS.CADE system (Computer Aided Software for Computer Aided Design and Engineering). Open-sourced in 1999. The most important open-source B-rep kernel, now the foundation of FreeCAD, CadQuery, and browser-based CAD.</p>
+  <p><strong style="color:var(--text-primary)">ShapeManager</strong> — Autodesk's name for their 2001 fork of ACIS 7.0. Descriptive name: it manages shapes. Autodesk forked it to stop paying per-seat licensing fees to Spatial. Every AutoCAD, Inventor, and Fusion 360 seat runs on it.</p>
+  <p><strong style="color:var(--text-primary)">Spatial</strong> — Dassault subsidiary (acquired 2000) that licenses ACIS and CGM to the world. Based in Colorado. When someone says "we license ACIS," the contract is with Spatial, not Dassault directly. Also sells 3D InterOp (file translation between kernels).</p>
+  <p><strong style="color:var(--text-primary)">openNURBS / Rhino</strong> — McNeel's own NURBS kernel, built from scratch in Seattle. Not ACIS, not Parasolid, not OCCT — completely independent. NURBS-first (surfaces are the primary citizen, not solids), which is why Rhino dominates freeform design. The <em>openNURBS</em> toolkit is open-source for reading/writing .3dm files, but the actual modeling engine is proprietary.</p>
+</div>
+
+<p style="margin-top:2rem">Here's who uses what.</p>
+<p style="font-size:0.75rem;color:var(--text-dim)">Tap any node for details. Drag to pan. Pinch to zoom.</p>
+
+<div class="graph-container">
+  <svg id="graphSvg" class="graph-svg" viewBox="0 0 1000 720" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <marker id="arrowOwn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4a5260"/></marker>
+      <marker id="arrowUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10" fill="none" stroke="#4a5260" stroke-width="1.5"/></marker>
+    </defs>
+    <g id="graphEdges"></g>
+    <g id="graphNodes"></g>
+  </svg>
+</div>
+
+<div class="graph-legend">
+  <span><span class="dot" style="background:#0097A7"></span> Siemens</span>
+  <span><span class="dot" style="background:#C62828"></span> Dassault</span>
+  <span><span class="dot" style="background:#E65100"></span> Autodesk</span>
+  <span><span class="dot" style="background:#2E7D32"></span> PTC</span>
+  <span><span class="dot" style="background:#2eb8a0"></span> Open Source</span>
+  <span><span class="dot" style="background:#7B1FA2"></span> Startup</span>
+  <span><span class="dot" style="background:#F9A825"></span> Implicit/SDF</span>
+  <span><span class="dot" style="background:#78909C"></span> Independent</span>
+</div>
+</section>
+
+<!-- ============================================================
+     DIVIDER
+     ============================================================ -->
+<div class="divider"><svg viewBox="0 0 600 12" preserveAspectRatio="xMidYMid meet"><line x1="0" y1="6" x2="600" y2="6" stroke="#2e3545" stroke-width="1"/><polygon points="0,6 8,3 8,9" fill="#2e3545"/><polygon points="600,6 592,3 592,9" fill="#2e3545"/><rect x="210" y="0" width="180" height="12" fill="#0a0b0d"/><text x="300" y="9" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#4a5260" letter-spacing="2">04 — NEW WAVE</text></svg></div>
+
+<!-- ============================================================
+     SECTION 4: WHAT'S COMING
+     ============================================================ -->
+<section id="s4">
+<h2>The Forgotten & The Uprising</h2>
+
+<h3>History's Footnotes</h3>
+<p><em>Romulus</em> (1978) — the world's first commercial B-rep kernel. Written in Fortran at Cambridge. Direct ancestor of both Parasolid (its C rewrite) and ACIS (built by some of the same people). Everything in the ecosystem above descends from this.</p>
+<p><em>ShapeManager</em> (2001) — Autodesk forked ACIS source code to eliminate per-seat licensing fees. Now the most widely deployed kernel in the world (every AutoCAD seat) yet almost nobody talks about it because it's never been licensed to anyone else.</p>
+<p><em>C3D</em> (ASCON, Russia) — the only major kernel from outside the US/EU/Japan axis. Powers KOMPAS-3D and nanoCAD. Strategically important for Russian technology independence post-sanctions.</p>
+<p><em>SMLib</em> — a NURBS+polygon toolkit used by 150+ licensees. Acquired by NVIDIA in 2022, dissolved, presumably absorbed into Omniverse/USD.</p>
+
+<h3 style="margin-top:2rem">The New Wave</h3>
+<p>Click column headers to sort.</p>
+
+<div class="table-wrap">
+<table id="kernelTable">
+<thead><tr>
+  <th data-col="name" aria-sort="none">Kernel</th>
+  <th data-col="type" aria-sort="none">Type</th>
+  <th data-col="lang" aria-sort="none">Language</th>
+  <th data-col="open" aria-sort="none">Open?</th>
+  <th data-col="maturity" aria-sort="none">Maturity</th>
+  <th data-col="strength" aria-sort="none">Key Strength</th>
+</tr></thead>
+<tbody id="kernelBody"></tbody>
+</table>
+</div>
+</section>
+
+<!-- ============================================================
+     DIVIDER
+     ============================================================ -->
+<div class="divider"><svg viewBox="0 0 600 12" preserveAspectRatio="xMidYMid meet"><line x1="0" y1="6" x2="600" y2="6" stroke="#2e3545" stroke-width="1"/><polygon points="0,6 8,3 8,9" fill="#2e3545"/><polygon points="600,6 592,3 592,9" fill="#2e3545"/><rect x="210" y="0" width="180" height="12" fill="#0a0b0d"/><text x="300" y="9" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="#4a5260" letter-spacing="2">05 — SHOP FLOOR</text></svg></div>
+
+<!-- ============================================================
+     SECTION 5: WHY THIS MATTERS FOR CAM
+     ============================================================ -->
+<section id="s5">
+<h2>Why This Matters for CAM</h2>
+
+<div class="paradigm-card" style="border-color:var(--accent-dim);border-left:3px solid var(--accent);margin-bottom:1.5rem">
+  <h3 style="color:var(--accent)">Mastercam runs on Parasolid</h3>
+  <p>The same kernel as SolidWorks, NX, Solid Edge, Onshape, and Shapr3D. That's why <code>.x_t</code> (Parasolid) files round-trip cleanly between these tools — it's the same mathematical representation on both ends. No translation, no information loss.</p>
+</div>
+
+<h3>STEP &gt; STL — Always</h3>
+<p>A STEP file carries exact B-rep geometry: NURBS surfaces with true normals at every point. An STL file is a bag of triangles — an approximation. Your 5-axis finish pass computes cutter-contact points against those surfaces. Exact NURBS = glass-smooth. Triangulated mesh = facets.</p>
+
+<h3 style="margin-top:1.5rem">The SDF-to-CAM Gap</h3>
+<p>If your part is designed in nTopology (implicit lattices for additive manufacturing), it must be meshed to STL before any CAM system can touch it. The mathematical function that defines the lattice is <em>destroyed</em> in the conversion. This is the biggest unsolved interoperability problem in manufacturing today.</p>
+
+<h3 style="margin-top:1.5rem">What the Kernel Sees</h3>
+<p>Your CAM software doesn't see your model the way you do. It sees offset surfaces (for cutter compensation), containment boundaries (for gouge detection), and surface normal vectors (for 5-axis tool orientation). All computed by the kernel, thousands of times per toolpath segment.</p>
+
+<h3 style="margin-top:1.5rem">Why Some CAM Vendors Build Their Own Kernels</h3>
+<p>Most CAM software licenses Parasolid — Mastercam, GibbsCAM, Esprit, Edgecam, PowerMill all pay Siemens per seat. But a few built their own:</p>
+<div class="failure-grid" style="grid-template-columns:1fr">
+  <div class="failure-card">
+    <h3>hyperMILL → hyperCAD-S (OPEN MIND, Germany)</h3>
+    <p>Not a full kernel like Parasolid. It's a lightweight CAD viewer/editor purpose-built for CAM workflows: stock model management, electrode design, 5-axis setup. CAM doesn't need 90% of what Parasolid offers (parametric history, assembly constraints). So OPEN MIND built exactly what CAM needs and nothing more. Also eliminates per-seat Parasolid licensing costs. Escape hatch: hyperMILL also runs as a plugin inside SolidWorks or Inventor, using <em>their</em> kernel instead.</p>
+  </div>
+  <div class="failure-card">
+    <h3>Tebis → Own kernel (Germany)</h3>
+    <p>Tebis built their own geometric engine decades ago, specialized for die/mold and aerospace surfacing. Their strength is 5-axis simultaneous machining of complex freeform surfaces — toolpath quality on deep cavities and thin walls. The kernel is optimized for the specific surface interrogation that mold CAM demands (draft analysis, undercut detection, parting surface generation).</p>
+  </div>
+</div>
+<p style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.75rem">The trend is toward Parasolid — it's become the "just license this" default for new CAM entrants. But the holdouts built their own for a reason: a kernel tuned for CAM-specific geometry operations can outperform a general-purpose kernel on the operations that matter most.</p>
+
+<h3 style="margin-top:1.5rem">What's Next: Convergent Modeling</h3>
+<p>Siemens is betting on mixing mesh and B-rep in the same model — scan data, generative design output, and precision features coexisting. They call it <em>Convergent Modeling</em>. If it works, the SDF-to-CAM gap closes. Your CAM kernel would handle both representations natively.</p>
+
+<div class="validity-display" style="margin-top:2rem;border-color:var(--accent-teal-dim)">
+  <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem">File Format Quality for CAM</div>
+  <div class="validity-row"><span class="validity-label" style="width:80px">STEP</span><div class="validity-bar"><div class="validity-bar-fill" style="width:100%;background:var(--accent)"></div></div><span class="validity-count" style="color:var(--accent)">Exact</span></div>
+  <div class="validity-row"><span class="validity-label" style="width:80px">Parasolid</span><div class="validity-bar"><div class="validity-bar-fill" style="width:100%;background:var(--accent)"></div></div><span class="validity-count" style="color:var(--accent)">Exact</span></div>
+  <div class="validity-row"><span class="validity-label" style="width:80px">IGES</span><div class="validity-bar"><div class="validity-bar-fill" style="width:75%;background:var(--text-dim)"></div></div><span class="validity-count" style="color:var(--text-secondary)">Legacy</span></div>
+  <div class="validity-row"><span class="validity-label" style="width:80px">3MF</span><div class="validity-bar"><div class="validity-bar-fill" style="width:50%;background:var(--text-dim)"></div></div><span class="validity-count" style="color:var(--text-secondary)">Mesh</span></div>
+  <div class="validity-row"><span class="validity-label" style="width:80px">STL</span><div class="validity-bar"><div class="validity-bar-fill" style="width:30%;background:var(--text-dim)"></div></div><span class="validity-count" style="color:var(--text-dim)">Approx</span></div>
+</div>
+
+<p style="margin-top:2rem;font-size:0.75rem;color:var(--text-dim)">
+Built with data verified Feb 2026. Corrections, additions: send a STEP file and a complaint.<br>
+Typography: Barlow Condensed + IBM Plex Mono. Zero frameworks. One HTML file.
+</p>
+</section>
+
+</div><!-- /page -->
+
+<!-- ============================================================
+     DETAIL PANEL FOR GRAPH
+     ============================================================ -->
+<div id="graph-panel">
+  <button class="panel-close" id="panelClose">&times;</button>
+  <h3 id="panelTitle"></h3>
+  <div class="panel-meta" id="panelMeta"></div>
+  <div class="panel-desc" id="panelDesc"></div>
+  <ul class="panel-list" id="panelList"></ul>
+</div>
+
+<script>
+/* ============================================================
+   NAMESPACE
+   ============================================================ */
+const K = {
+  state: { section: 0, sdf: { blend: 0.15, offset: 0 }, sort: { col: 'name', dir: 1 }, graphNode: null },
+  mod: {}
+};
+
+/* ============================================================
+   DATA: KERNEL TABLE
+   ============================================================ */
+const TABLE_DATA = [
+  { name:'Zoo Engine', type:'B-rep', lang:'Rust', open:'API-only', maturity:1, strength:'GPU-native, AI (Zookeeper)' },
+  { name:'Fornjot', type:'B-rep', lang:'Rust', open:'Yes', maturity:1, strength:'Code-CAD, memory-safe' },
+  { name:'Truck', type:'B-rep', lang:'Rust', open:'Yes', maturity:2, strength:'WASM-ready' },
+  { name:'Fidget', type:'SDF', lang:'Rust', open:'Yes', maturity:2, strength:'JIT-compiled, 31x speedup' },
+  { name:'libfive', type:'F-rep', lang:'C++', open:'Yes', maturity:3, strength:'Keeter origin, nTop maintains' },
+  { name:'nTop', type:'Implicit', lang:'Proprietary', open:'No', maturity:4, strength:'Lattices, TPMS, AM-native' },
+  { name:'CadQuery', type:'B-rep', lang:'Python', open:'Yes', maturity:4, strength:'Pythonic parametric CAD' },
+  { name:'Build123d', type:'B-rep', lang:'Python', open:'Yes', maturity:3, strength:'Algebraic modeling' },
+  { name:'SolidType', type:'B-rep', lang:'TypeScript', open:'No', maturity:1, strength:'Browser-native B-rep' },
+  { name:'Chili3D', type:'B-rep', lang:'TypeScript', open:'Yes', maturity:1, strength:'Open-source browser CAD' },
+];
+
+/* ============================================================
+   DATA: ECOSYSTEM GRAPH
+   ============================================================ */
+const COLORS = {
+  siemens:'#0097A7', dassault:'#C62828', autodesk:'#E65100',
+  ptc:'#2E7D32', open:'#2eb8a0', startup:'#7B1FA2', implicit:'#F9A825', independent:'#78909C'
+};
+
+const NODES = [
+  // Companies (tier 0, y~60)
+  { id:'siemens', x:120, y:50, r:28, label:'Siemens', sub:'owner', color:COLORS.siemens },
+  { id:'dassault', x:520, y:50, r:28, label:'Dassault', sub:'owner', color:COLORS.dassault },
+  { id:'autodesk', x:760, y:50, r:28, label:'Autodesk', sub:'owner', color:COLORS.autodesk },
+  { id:'ptc', x:940, y:50, r:22, label:'PTC', sub:'owner', color:COLORS.ptc },
+  // Kernels (tier 1, y~200)
+  { id:'parasolid', x:150, y:200, r:32, label:'Parasolid', sub:'kernel · B-rep', color:COLORS.siemens },
+  { id:'cgm', x:480, y:200, r:26, label:'CGM', sub:'kernel · B-rep', color:COLORS.dassault },
+  { id:'acis', x:600, y:200, r:26, label:'ACIS', sub:'kernel · B-rep', color:COLORS.dassault },
+  { id:'shapemgr', x:760, y:200, r:26, label:'ShapeMgr', sub:'ACIS fork · B-rep', color:COLORS.autodesk },
+  { id:'granite', x:940, y:200, r:22, label:'Granite', sub:'captive · B-rep', color:COLORS.ptc },
+  { id:'occt', x:370, y:380, r:30, label:'OCCT', sub:'kernel · LGPL', color:COLORS.open },
+  { id:'zoo', x:60, y:380, r:22, label:'Zoo KCL', sub:'new kernel', color:COLORS.startup },
+  { id:'ntop', x:620, y:380, r:22, label:'nTop', sub:'implicit', color:COLORS.implicit },
+  { id:'solvespace', x:770, y:380, r:18, label:'SolveSpace', sub:'own solver', color:COLORS.independent },
+  // Products (tier 2, y~340-500)
+  { id:'nx', x:60, y:320, r:18, label:'NX', sub:'', color:COLORS.siemens },
+  { id:'solidedge', x:100, y:290, r:16, label:'Solid Edge', sub:'', color:COLORS.siemens },
+  { id:'solidworks', x:225, y:290, r:18, label:'SolidWorks', sub:'', color:COLORS.siemens },
+  { id:'onshape', x:280, y:320, r:16, label:'Onshape', sub:'', color:COLORS.siemens },
+  { id:'mastercam', x:160, y:320, r:18, label:'Mastercam', sub:'CAM', color:COLORS.siemens },
+  { id:'shapr3d', x:80, y:450, r:16, label:'Shapr3D', sub:'', color:COLORS.startup },
+  { id:'plasticity', x:160, y:450, r:16, label:'Plasticity', sub:'$149', color:COLORS.startup },
+  { id:'catia', x:480, y:290, r:18, label:'CATIA', sub:'', color:COLORS.dassault },
+  { id:'bricscad', x:620, y:290, r:14, label:'BricsCAD', sub:'', color:COLORS.dassault },
+  { id:'ironcad', x:690, y:260, r:14, label:'IronCAD', sub:'dual', color:COLORS.dassault },
+  { id:'spaceclaim', x:180, y:260, r:14, label:'SpaceClaim', sub:'→Parasolid', color:COLORS.siemens },
+  { id:'autocad', x:760, y:290, r:16, label:'AutoCAD', sub:'3D', color:COLORS.autodesk },
+  { id:'inventor', x:820, y:320, r:16, label:'Inventor', sub:'', color:COLORS.autodesk },
+  { id:'fusion360', x:700, y:320, r:16, label:'Fusion 360', sub:'', color:COLORS.autodesk },
+  { id:'creo', x:940, y:290, r:18, label:'Creo', sub:'', color:COLORS.ptc },
+  { id:'freecad', x:310, y:480, r:18, label:'FreeCAD', sub:'', color:COLORS.open },
+  { id:'cadquery', x:400, y:480, r:14, label:'CadQuery', sub:'Python', color:COLORS.open },
+  { id:'build123d', x:470, y:480, r:14, label:'Build123d', sub:'Python', color:COLORS.open },
+  { id:'kicad', x:340, y:520, r:12, label:'KiCAD', sub:'3D', color:COLORS.open },
+  { id:'dune3d', x:420, y:520, r:12, label:'Dune3D', sub:'', color:COLORS.open },
+  { id:'chili3d', x:490, y:520, r:12, label:'Chili3D', sub:'WASM', color:COLORS.open },
+  { id:'womp', x:700, y:430, r:16, label:'WOMP', sub:'SDF', color:COLORS.implicit },
+  { id:'romulus', x:350, y:100, r:16, label:'Romulus', sub:'1978 · first', color:COLORS.independent },
+  // CAM software
+  { id:'gibbscam', x:260, y:450, r:16, label:'GibbsCAM', sub:'CAM', color:COLORS.siemens },
+  { id:'powermill', x:100, y:560, r:16, label:'PowerMill', sub:'CAM', color:COLORS.autodesk },
+  { id:'esprit', x:200, y:560, r:14, label:'Esprit', sub:'CAM', color:COLORS.independent },
+  { id:'edgecam', x:290, y:560, r:14, label:'Edgecam', sub:'CAM', color:COLORS.independent },
+  { id:'hypermill', x:870, y:440, r:18, label:'hyperMILL', sub:'CAM · own kernel', color:COLORS.independent },
+  { id:'tebis', x:870, y:520, r:16, label:'Tebis', sub:'CAM · own kernel', color:COLORS.independent },
+  // Spatial (Dassault subsidiary, distributes ACIS/CGM)
+  { id:'spatial', x:540, y:130, r:22, label:'Spatial', sub:'Dassault subsidiary', color:COLORS.dassault },
+  // Rhino ecosystem (own kernel - openNURBS)
+  { id:'rhino', x:560, y:490, r:22, label:'Rhino', sub:'own NURBS kernel', color:COLORS.independent },
+  { id:'grasshopper', x:650, y:520, r:14, label:'Grasshopper', sub:'visual prog', color:COLORS.independent },
+  { id:'opennurbs', x:560, y:420, r:18, label:'openNURBS', sub:'kernel · McNeel', color:COLORS.independent },
+];
+
+const EDGES = [
+  // Ownership
+  ['siemens','parasolid','owns'],['dassault','spatial','owns'],
+  ['spatial','cgm','owns'],['spatial','acis','owns'],
+  ['autodesk','shapemgr','owns'],['ptc','granite','owns'],
+  // Ancestry
+  ['romulus','parasolid','ancestor'],['romulus','acis','ancestor'],['acis','shapemgr','fork'],
+  // Parasolid powers
+  ['parasolid','nx','uses'],['parasolid','solidedge','uses'],['parasolid','solidworks','uses'],
+  ['parasolid','onshape','uses'],['parasolid','mastercam','uses'],['parasolid','shapr3d','uses'],
+  ['parasolid','plasticity','uses'],['parasolid','spaceclaim','uses'],
+  // CGM / ACIS powers
+  ['cgm','catia','uses'],['acis','bricscad','uses'],['acis','ironcad','uses'],['parasolid','ironcad','uses'],
+  // ShapeManager powers
+  ['shapemgr','autocad','uses'],['shapemgr','inventor','uses'],['shapemgr','fusion360','uses'],
+  // Granite powers
+  ['granite','creo','uses'],
+  // OCCT powers
+  ['occt','freecad','uses'],['occt','cadquery','uses'],['occt','build123d','uses'],
+  ['occt','kicad','uses'],['occt','dune3d','uses'],['occt','chili3d','uses'],
+  // CAM software
+  ['parasolid','gibbscam','uses'],['parasolid','powermill','uses'],
+  ['parasolid','esprit','uses'],['parasolid','edgecam','uses'],
+  // Rhino ecosystem
+  ['opennurbs','rhino','uses'],['rhino','grasshopper','uses'],
+];
+
+const NODE_INFO = {
+  parasolid: { title:'Parasolid', meta:'Siemens · B-rep/NURBS · 1988', desc:'The most widely licensed kernel in the industry. Originally developed by Shape Data Ltd as a C rewrite of Romulus. Acquired by Siemens via UGS in 2007. Powers 350+ third-party applications. Includes Convergent Modeling for hybrid mesh+B-rep.', connections:['NX','Solid Edge','SolidWorks','Onshape','Mastercam','Shapr3D','Plasticity','SpaceClaim','IronCAD'] },
+  cgm: { title:'CGM', meta:'Dassault/Spatial · B-rep/NURBS · ~1998', desc:'Convergence Geometric Modeler. Built internally by Dassault for CATIA V5. Licensed via Spatial Corporation since 2011. Native CATIA data fidelity. Note: SolidWorks 3DEXPERIENCE is migrating from Parasolid to CGM — a major kernel tension in the Dassault ecosystem.', connections:['CATIA V5/V6/3DX'] },
+  acis: { title:'ACIS', meta:'Spatial/Dassault · B-rep/NURBS · 1989', desc:'Created by the "Three A\'s" — Alan, Charles, Ian. Modular C++ architecture. About 400 licensees. Autodesk forked it to create ShapeManager in 2001.', connections:['BricsCAD','IronCAD (dual-kernel)'] },
+  shapemgr: { title:'ShapeManager', meta:'Autodesk · ACIS fork · 2001', desc:'Autodesk forked ACIS 7.0 source code in 2001 to eliminate per-seat licensing fees. Never licensed to anyone else. The most deployed kernel nobody talks about — every AutoCAD, Inventor, and Fusion 360 seat runs on it.', connections:['AutoCAD (3D)','Inventor','Fusion 360'] },
+  granite: { title:'Granite', meta:'PTC · Captive B-rep · 1988', desc:'Developed internally for Pro/ENGINEER (now Creo). Never licensed as a modeling kernel to third parties. PTC offers read-only interoperability access for file import, but the modeling engine stays captive.', connections:['Creo'] },
+  occt: { title:'Open CASCADE (OCCT)', meta:'Open CASCADE SAS · LGPL · 1993', desc:'The only production-grade open-source B-rep kernel. Derived from Matra Datavision CAS.CADE. OCCT 8.0 releasing Feb 2026 (moving to C++17). Can compile to WebAssembly for browser CAD. Powers the Python Code-CAD ecosystem.', connections:['FreeCAD','CadQuery','Build123d','KiCAD (3D)','Dune3D','Chili3D'] },
+  zoo: { title:'Zoo CAD Engine', meta:'Zoo (fka KittyCAD) · New kernel · 2024', desc:'Built from scratch. GPU-optimized, cloud-streaming architecture (client receives a video stream). Custom DSL called KCL. Zookeeper AI agent (Jan 2026) can create models and do design reviews. SOC2 Type II pending.', connections:['Zoo Design Studio'] },
+  ntop: { title:'nTopology Kernel', meta:'nTopology · Implicit · Proprietary', desc:'Commercial implicit modeling engine. Every solid is a mathematical equation. Purpose-built for additive manufacturing: TPMS lattices, variable-density infill, metamaterials. Maintains libfive (originally by Matt Keeter). nTop 5.0 introduced improved precision for thin walls.', connections:['nTopology','libfive (maintained)'] },
+  solvespace: { title:'SolveSpace', meta:'Independent · Own solver · Open source', desc:'Complete geometric kernel and constraint solver in ~50K lines of C++. The only known open-source working geometric constraint solver. The solver is exposed as libslvs for embedding in other apps.', connections:['SolveSpace (standalone)'] },
+  mastercam: { title:'Mastercam', meta:'Sandvik/CNC Software · Parasolid', desc:'The world\'s most-used CAM software runs on Parasolid — the same kernel as SolidWorks, NX, and Onshape. This is why .x_t files round-trip cleanly. Acquired by Sandvik in 2021. Parasolid is the native representation.', connections:['Parasolid (native)','STEP/IGES/SAT (import)'] },
+  romulus: { title:'Romulus', meta:'Shape Data · 1978 · First B-rep kernel', desc:'The world\'s first commercial solid modeling kernel. Written in Fortran at Cambridge. Proved that boundary representation could work commercially. Direct ancestor of Parasolid (its C rewrite) and ACIS (same people).', connections:['→ Parasolid','→ ACIS'] },
+  solidworks: { title:'SolidWorks', meta:'Dassault · Parasolid', desc:'Desktop SolidWorks uses Parasolid (since mid-1990s). However, SolidWorks 3DEXPERIENCE (cloud) uses CGM. Dassault is pushing users toward 3DX, which means a future kernel migration from Parasolid to CGM.', connections:['Parasolid (desktop)','CGM (3DX cloud)'] },
+  womp: { title:'WOMP', meta:'SDF · Browser-based · Free+Pro', desc:'Uses signed distance functions for geometry. Characteristic organic/blobby aesthetic where shapes blend smoothly. Runs entirely in the browser. Pro tier $12.99/month.', connections:[] },
+  // Companies
+  siemens: { title:'Siemens Digital Industries', meta:'Owner · Parasolid', desc:'Acquired Parasolid via UGS (2007). The Parasolid ecosystem is the largest in industry — SolidWorks, NX, Solid Edge, Onshape, Mastercam, and 350+ third-party apps all license it. Also developing Convergent Modeling for hybrid mesh+B-rep workflows.', connections:['Parasolid','NX','Solid Edge'] },
+  dassault: { title:'Dassault Syst\u00e8mes', meta:'Owner · CGM + ACIS (via Spatial)', desc:'Owns two kernels: CGM (built for CATIA) and ACIS (acquired via Spatial Corp). Pushing the 3DEXPERIENCE platform which uses CGM. Interesting tension: desktop SolidWorks still runs Parasolid, licensed from competitor Siemens.', connections:['CGM','ACIS','CATIA','SolidWorks'] },
+  autodesk: { title:'Autodesk', meta:'Owner · ShapeManager (ACIS fork)', desc:'Forked ACIS 7.0 in 2001 to create ShapeManager, eliminating per-seat kernel licensing. Never licensed it externally. Every AutoCAD, Inventor, and Fusion 360 seat runs on it — possibly the most deployed kernel nobody talks about.', connections:['ShapeManager','AutoCAD','Inventor','Fusion 360'] },
+  ptc: { title:'PTC', meta:'Owner · Granite (captive)', desc:'Built Granite internally for Pro/ENGINEER (1988, now Creo). Never licensed the modeling engine to third parties. Offers read-only interop for file import. The most "walled garden" of the major kernel vendors.', connections:['Granite','Creo'] },
+  // Products
+  nx: { title:'NX (Siemens)', meta:'Siemens · Parasolid · High-end', desc:'Siemens\' flagship CAD/CAM/CAE suite. Used in aerospace, automotive, and defense. Runs on Parasolid natively. One of the most capable but complex CAD systems. Tight integration with Teamcenter PLM.', connections:['Parasolid'] },
+  solidedge: { title:'Solid Edge', meta:'Siemens · Parasolid · Mid-range', desc:'Mid-range CAD from Siemens. Pioneered synchronous technology (direct + parametric editing). Runs on Parasolid. Competes with SolidWorks in the mid-market.', connections:['Parasolid'] },
+  onshape: { title:'Onshape', meta:'Siemens · Parasolid · Cloud-native', desc:'First fully cloud-native CAD, built by ex-SolidWorks founders. Runs Parasolid server-side. Acquired by PTC in 2019 but still uses Parasolid (not Granite). Real-time multi-user collaboration.', connections:['Parasolid'] },
+  shapr3d: { title:'Shapr3D', meta:'Startup · Parasolid · iPad/Desktop', desc:'Direct modeling CAD that started iPad-first, now cross-platform. Licenses Parasolid. Known for exceptional touch UI. Popular with industrial designers and hobbyists. ~$300/year.', connections:['Parasolid'] },
+  plasticity: { title:'Plasticity', meta:'Startup · Parasolid · $149', desc:'Indie CAD tool focused on SubD-to-NURBS workflows for concept/industrial design. Licenses Parasolid for B-rep operations. One-time $149 purchase made it viral among hobbyists and small studios.', connections:['Parasolid'] },
+  catia: { title:'CATIA', meta:'Dassault · CGM · High-end', desc:'Dassault\'s flagship. The standard in aerospace (Boeing, Airbus) and automotive (most OEMs). Runs on CGM since V5. Class-A surfacing, composites design, large assembly management. The most expensive tier of Dassault\'s portfolio.', connections:['CGM'] },
+  bricscad: { title:'BricsCAD', meta:'Hexagon/Bricsys · ACIS', desc:'DWG-compatible CAD that licenses ACIS from Spatial. Competes with AutoCAD on price. BricsCAD Mechanical adds 3D direct modeling. Belgian company Bricsys, acquired by Hexagon in 2018.', connections:['ACIS'] },
+  ironcad: { title:'IronCAD', meta:'Dual-kernel · ACIS + Parasolid', desc:'Unique dual-kernel architecture: can use both ACIS and Parasolid within the same model. Drag-and-drop catalog-based design approach. Niche but loyal user base in custom machinery and equipment design.', connections:['ACIS','Parasolid'] },
+  spaceclaim: { title:'SpaceClaim', meta:'Ansys · Parasolid', desc:'Direct modeling tool acquired by Ansys in 2014. Switched from ACIS to Parasolid around 2024 R2. Used heavily for simulation prep — defeaturing, repair, and simplification of imported geometry before meshing.', connections:['Parasolid'] },
+  autocad: { title:'AutoCAD', meta:'Autodesk · ShapeManager · 3D', desc:'The world\'s most recognized CAD brand. 2D drafting is its core, but 3D solid modeling (since R13) runs on ShapeManager. Most users never touch the 3D — but every seat has the kernel loaded.', connections:['ShapeManager'] },
+  inventor: { title:'Inventor', meta:'Autodesk · ShapeManager · Mid-range', desc:'Autodesk\'s mid-range parametric CAD. Runs on ShapeManager. Competes with SolidWorks and Solid Edge. Strong sheet metal and frame generator tools. iLogic for rule-driven design automation.', connections:['ShapeManager'] },
+  fusion360: { title:'Fusion 360', meta:'Autodesk · ShapeManager · Cloud-hybrid', desc:'Cloud-hybrid CAD/CAM/CAE that runs ShapeManager locally with cloud storage/rendering. Integrated 3-axis CAM. Free for personal use made it hugely popular with makers. Generative design uses a separate solver.', connections:['ShapeManager'] },
+  creo: { title:'Creo (Pro/E)', meta:'PTC · Granite · High-end', desc:'Originally Pro/ENGINEER (1987), renamed Creo in 2010. Runs on PTC\'s captive Granite kernel. Known for strong surfacing, sheet metal, and mechanism simulation. Dominant in consumer electronics and industrial equipment.', connections:['Granite'] },
+  freecad: { title:'FreeCAD', meta:'Open Source · OCCT · LGPL', desc:'The leading open-source parametric CAD. Uses OCCT for its geometry kernel. v1.0 released 2024 after 22 years of development. Topological naming fix was the milestone that made it production-viable for many users.', connections:['OCCT'] },
+  cadquery: { title:'CadQuery', meta:'Open Source · OCCT · Python', desc:'Python library for parametric CAD built on OCCT via OCP bindings. Code-CAD approach: define geometry in Python scripts, not a GUI. Popular for programmatic part generation and 3D printing.', connections:['OCCT'] },
+  build123d: { title:'Build123d', meta:'Open Source · OCCT · Python', desc:'Newer Python Code-CAD library, also built on OCCT. Uses algebraic/builder syntax that many find more readable than CadQuery. Growing fast in the programmatic CAD community.', connections:['OCCT'] },
+  kicad: { title:'KiCAD', meta:'Open Source · OCCT · EDA', desc:'Open-source electronics design (PCB/schematic). Uses OCCT for its 3D board viewer — rendering component models and board geometry. The 3D kernel is secondary to its core 2D EDA engine.', connections:['OCCT (3D viewer)'] },
+  dune3d: { title:'Dune3D', meta:'Open Source · OCCT', desc:'Open-source parametric 3D CAD with a constraint-based approach. Uses OCCT as its geometry kernel. Created by the developer of Horizon EDA. Still early but actively developed.', connections:['OCCT'] },
+  chili3d: { title:'Chili3D', meta:'Open Source · OCCT · WASM', desc:'Open-source browser-based CAD that compiles OCCT to WebAssembly. Runs entirely client-side. Demonstrates that a full B-rep kernel can work in the browser without a server.', connections:['OCCT (WASM)'] },
+  // CAM software
+  gibbscam: { title:'GibbsCAM', meta:'Sandvik · Parasolid · CAM', desc:'Production-focused CAM for turning, milling, MTM, and wire EDM. Owned by Sandvik (same parent as Mastercam since 2021). Licenses Parasolid for solid model editing. Known for strong Swiss-type lathe programming.', connections:['Parasolid'] },
+  powermill: { title:'PowerMill', meta:'Autodesk · Parasolid · 5-axis CAM', desc:'High-end 5-axis and additive CAM, originally by Delcam (acquired by Autodesk 2014). Licenses Parasolid for geometry handling. Specialized in complex aerospace/mold surfaces. Interesting case: Autodesk owns it but it uses Parasolid, not ShapeManager.', connections:['Parasolid'] },
+  esprit: { title:'Esprit', meta:'Hexagon · Parasolid · CAM', desc:'Full-spectrum CAM covering milling, turning, wire EDM, and multitasking. Originally by DP Technology, acquired by Hexagon in 2021. Licenses Parasolid. Being merged into Hexagon\'s manufacturing intelligence portfolio alongside Edgecam.', connections:['Parasolid'] },
+  edgecam: { title:'Edgecam', meta:'Hexagon · Parasolid · CAM', desc:'Production machining CAM focused on mill-turn and solid model machining. Part of Hexagon\'s Vero Software group. Licenses Parasolid for geometry. Strong in production environments with feature-based machining automation.', connections:['Parasolid'] },
+  hypermill: { title:'hyperMILL', meta:'OPEN MIND · Own kernel · 5-axis CAM', desc:'Premium 5-axis CAM from OPEN MIND Technologies. Runs standalone with hyperCAD-S (their own proprietary CAD/viewer kernel) or as a plugin inside SolidWorks/Inventor. One of the few CAM systems with its own geometric engine rather than licensing Parasolid or ACIS.', connections:['hyperCAD-S (own)','SolidWorks (plugin)','Inventor (plugin)'] },
+  tebis: { title:'Tebis', meta:'Tebis AG · Own kernel · Die/Mold CAM', desc:'German CAM company (founded 1984) that built their own geometry kernel from scratch, specialized for die/mold and aerospace surfacing. Known for exceptional 5-axis simultaneous machining on complex freeform surfaces. The kernel is tuned for mold-specific operations: draft analysis, undercut detection, parting surface generation. One of the few CAM systems alongside hyperMILL that doesn\'t license Parasolid or ACIS.', connections:['Own kernel','STEP/IGES (import)'] },
+  spatial: { title:'Spatial (Dassault subsidiary)', meta:'Dassault · Distributes ACIS, CGM, 3D InterOp', desc:'The company that licenses ACIS and CGM to the world. Headquartered in Broomfield, Colorado. Acquired by Dassault in 2000. Also sells 3D InterOp (file translation), CGM Polyhedra (mesh modeling), and 3D Precise Mesh. When a company "licenses ACIS," the contract is with Spatial, not Dassault directly.', connections:['ACIS','CGM','3D InterOp','CGM Polyhedra'] },
+  rhino: { title:'Rhinoceros (Rhino)', meta:'McNeel · Own NURBS kernel', desc:'The NURBS modeler. Rhino uses its own proprietary geometry kernel — not Parasolid, not ACIS, not OCCT. Built from scratch by Robert McNeel & Associates (Seattle). Dominant in architecture, jewelry, industrial design, marine, and increasingly in manufacturing for complex freeform surfaces. The kernel is NURBS-first: surfaces are the primary citizen, not solids. This is why Rhino excels at shapes that make SolidWorks cry.', connections:['openNURBS (file format)','Grasshopper','3dm file format'] },
+  grasshopper: { title:'Grasshopper', meta:'McNeel · Visual Programming · Inside Rhino', desc:'Visual programming environment built into Rhino. Drag-and-drop nodes to create parametric geometry. Massively popular in architecture (Zaha Hadid Architects, BIG, Foster+Partners). Plug-in ecosystem includes Kangaroo (physics), Ladybug (environmental), and hundreds more. Many Grasshopper outputs get exported as STEP/3DM for CNC machining.', connections:['Rhino (host)'] },
+  opennurbs: { title:'openNURBS', meta:'McNeel · Open-source file toolkit', desc:'Open-source C++ toolkit for reading and writing Rhino .3dm files. This is NOT the full Rhino kernel — it\'s the file format library. McNeel open-sourced it so any CAD/CAM software can import .3dm natively. The actual modeling engine (booleans, surfacing, meshing) remains proprietary inside Rhino.', connections:['Rhino','3dm file format'] },
+};
+
+/* ============================================================
+   MODULE: SDF HEATMAP
+   ============================================================ */
+K.mod.sdf = {
+  inited: false,
+  sdfCtx: null, ctrCtx: null,
+  W: 120, H: 120, CW: 280, CH: 280,
+  buf: null, cbuf: null,
+
+  init() {
+    if (this.inited) return;
+    this.inited = true;
+    const sc = document.getElementById('sdfCanvas');
+    const cc = document.getElementById('contourCanvas');
+    if (!sc || !cc) return;
+    this.sdfCtx = sc.getContext('2d');
+    this.ctrCtx = cc.getContext('2d');
+    this.buf = new Uint8ClampedArray(this.W * this.H * 4);
+    this.render();
+  },
+
+  // SDF primitives
+  sdCircle(x, y, r) { return Math.hypot(x, y) - r; },
+  sdBox(x, y, bx, by) {
+    const dx = Math.abs(x) - bx, dy = Math.abs(y) - by;
+    return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0);
+  },
+  smin(a, b, k) {
+    if (k < 0.001) return Math.min(a, b);
+    k *= 4; const h = Math.max(k - Math.abs(a - b), 0);
+    return Math.min(a, b) - h * h * 0.25 / k;
+  },
+
+  scene(x, y) {
+    const { blend, offset } = K.state.sdf;
+    const box = this.sdBox(x, y, 0.35, 0.22);
+    const c1 = this.sdCircle(x - 0.25 - offset, y + 0.1, 0.18);
+    const c2 = this.sdCircle(x + 0.3, y - 0.15 + offset, 0.14);
+    return this.smin(this.smin(box, c1, blend), c2, blend);
+  },
+
+  turbo(t) {
+    t = Math.max(0, Math.min(1, t));
+    const t2=t*t, t3=t2*t, t4=t3*t, t5=t4*t;
+    return [
+      Math.max(0, Math.min(1, 0.13572+4.61539*t-42.6603*t2+132.131*t3-152.942*t4+59.2864*t5)),
+      Math.max(0, Math.min(1, 0.09140+2.19419*t+4.84297*t2-14.185*t3+4.27730*t4+2.82957*t5)),
+      Math.max(0, Math.min(1, 0.10667+12.6419*t-60.582*t2+110.363*t3-89.903*t4+27.3482*t5))
+    ];
+  },
+
+  render() {
+    const { W, H, buf, sdfCtx, ctrCtx, CW, CH } = this;
+    if (!sdfCtx) return;
+    // Heatmap
+    for (let py = 0; py < H; py++) {
+      for (let px = 0; px < W; px++) {
+        const x = (px / W - 0.5) * 2, y = (0.5 - py / H) * 2;
+        const d = this.scene(x, y);
+        const t = Math.max(0, Math.min(1, d / 0.6 + 0.5));
+        const [r, g, b] = this.turbo(t);
+        const i = (py * W + px) * 4;
+        buf[i] = r * 255 | 0; buf[i+1] = g * 255 | 0; buf[i+2] = b * 255 | 0; buf[i+3] = 255;
+      }
+    }
+    sdfCtx.putImageData(new ImageData(buf, W, H), 0, 0);
+
+    // Contour canvas: solid fill + zero isoline
+    ctrCtx.fillStyle = '#111318';
+    ctrCtx.fillRect(0, 0, CW, CH);
+    // Fill inside
+    const img2 = ctrCtx.createImageData(CW, CH);
+    const d2 = img2.data;
+    for (let py = 0; py < CH; py++) {
+      for (let px = 0; px < CW; px++) {
+        const x = (px / CW - 0.5) * 2, y = (0.5 - py / CH) * 2;
+        const dist = this.scene(x, y);
+        const i = (py * CW + px) * 4;
+        if (dist < 0) { d2[i]=30; d2[i+1]=60; d2[i+2]=80; d2[i+3]=255; }
+        else { d2[i]=17; d2[i+1]=19; d2[i+2]=24; d2[i+3]=255; }
+      }
+    }
+    ctrCtx.putImageData(img2, 0, 0);
+    // Draw zero isoline
+    const G = 80;
+    ctrCtx.strokeStyle = '#2eb8a0';
+    ctrCtx.lineWidth = 2;
+    ctrCtx.beginPath();
+    for (let gy = 0; gy < G - 1; gy++) {
+      for (let gx = 0; gx < G - 1; gx++) {
+        const x0 = (gx/G-0.5)*2, y0=(0.5-gy/G)*2;
+        const x1 = ((gx+1)/G-0.5)*2, y1=(0.5-(gy+1)/G)*2;
+        const d00=this.scene(x0,y0), d10=this.scene(x1,y0);
+        const d01=this.scene(x0,y1), d11=this.scene(x1,y1);
+        const tc = (wx, wy) => [(wx*0.5+0.5)*CW, (0.5-wy*0.5)*CH];
+        const lerp = (a, b) => a / (a - b);
+        const pts = [];
+        if ((d00<0)!==(d10<0)) { const f=lerp(d00,d10); pts.push(tc(x0+f*(x1-x0),y0)); }
+        if ((d10<0)!==(d11<0)) { const f=lerp(d10,d11); pts.push(tc(x1,y0+f*(y1-y0))); }
+        if ((d01<0)!==(d11<0)) { const f=lerp(d01,d11); pts.push(tc(x0+f*(x1-x0),y1)); }
+        if ((d00<0)!==(d01<0)) { const f=lerp(d00,d01); pts.push(tc(x0,y0+f*(y1-y0))); }
+        if (pts.length >= 2) { ctrCtx.moveTo(pts[0][0],pts[0][1]); ctrCtx.lineTo(pts[1][0],pts[1][1]); }
+      }
+    }
+    ctrCtx.stroke();
+    // Draw some edge labels
+    ctrCtx.fillStyle = 'rgba(46,184,160,0.7)';
+    ctrCtx.font = '10px IBM Plex Mono';
+    ctrCtx.fillText('face', 100, 130);
+    ctrCtx.fillText('edge', 170, 90);
+    ctrCtx.fillText('vertex', 60, 180);
+  }
+};
+
+/* ============================================================
+   MODULE: ECOSYSTEM GRAPH
+   ============================================================ */
+K.mod.graph = {
+  init() {
+    const svg = document.getElementById('graphSvg');
+    const edgeG = document.getElementById('graphEdges');
+    const nodeG = document.getElementById('graphNodes');
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // Draw edges
+    EDGES.forEach(([fromId, toId, type]) => {
+      const from = NODES.find(n => n.id === fromId);
+      const to = NODES.find(n => n.id === toId);
+      if (!from || !to) return;
+      const x1=from.x, y1=from.y, x2=to.x, y2=to.y;
+      const cpx=(x1+x2)/2, cpy=y1+(y2-y1)*0.3;
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', `M${x1} ${y1} Q${cpx} ${cpy} ${x2} ${y2}`);
+      path.setAttribute('class', 'edge');
+      path.dataset.from = fromId;
+      path.dataset.to = toId;
+      if (type === 'ancestor' || type === 'fork') path.setAttribute('stroke-dasharray', '4 3');
+      path.setAttribute('marker-end', type === 'owns' ? 'url(#arrowOwn)' : 'url(#arrowUse)');
+      edgeG.appendChild(path);
+    });
+
+    // Draw nodes
+    NODES.forEach(n => {
+      const g = document.createElementNS(ns, 'g');
+      g.dataset.nodeId = n.id;
+      g.setAttribute('tabindex', '0');
+      // Invisible touch target
+      const hit = document.createElementNS(ns, 'circle');
+      hit.setAttribute('cx', n.x); hit.setAttribute('cy', n.y);
+      hit.setAttribute('r', Math.max(n.r + 8, 22));
+      hit.setAttribute('fill', 'transparent');
+      g.appendChild(hit);
+      // Visible circle
+      const c = document.createElementNS(ns, 'circle');
+      c.setAttribute('cx', n.x); c.setAttribute('cy', n.y);
+      c.setAttribute('r', n.r);
+      c.setAttribute('fill', n.color);
+      c.setAttribute('class', 'node-circle');
+      c.setAttribute('pointer-events', 'none');
+      c.setAttribute('opacity', '0.85');
+      g.appendChild(c);
+      // Label
+      const t = document.createElementNS(ns, 'text');
+      t.setAttribute('x', n.x); t.setAttribute('y', n.y - (n.sub ? 3 : 0));
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('class', 'node-label');
+      t.setAttribute('font-size', n.r > 24 ? '11' : n.r > 16 ? '9' : '7');
+      t.textContent = n.label;
+      g.appendChild(t);
+      if (n.sub) {
+        const t2 = document.createElementNS(ns, 'text');
+        t2.setAttribute('x', n.x); t2.setAttribute('y', n.y + 10);
+        t2.setAttribute('text-anchor', 'middle');
+        t2.setAttribute('class', 'node-type');
+        t2.setAttribute('font-size', n.r > 20 ? '8' : '6');
+        t2.textContent = n.sub;
+        g.appendChild(t2);
+      }
+      nodeG.appendChild(g);
+    });
+
+    // Click delegation
+    svg.addEventListener('click', e => {
+      const g = e.target.closest('[data-node-id]');
+      if (g) this.showPanel(g.dataset.nodeId);
+      else this.hidePanel();
+    });
+    document.getElementById('panelClose').addEventListener('click', () => this.hidePanel());
+
+    // Pan/zoom via viewBox
+    let vb = { x: 0, y: 0, w: 1000, h: 720 };
+    const applyVB = () => svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    const clampZoom = () => { vb.w = Math.max(300, Math.min(2000, vb.w)); vb.h = vb.w * (720 / 1000); };
+
+    // Single-finger pan
+    let panning = false, panStart = {};
+    svg.addEventListener('pointerdown', e => {
+      if (e.target.closest('[data-node-id]')) return;
+      panning = true; panStart = { px: e.clientX, py: e.clientY, vx: vb.x, vy: vb.y };
+      svg.setPointerCapture(e.pointerId);
+    });
+    svg.addEventListener('pointermove', e => {
+      if (!panning) return;
+      const s = vb.w / svg.clientWidth;
+      vb.x = panStart.vx - (e.clientX - panStart.px) * s;
+      vb.y = panStart.vy - (e.clientY - panStart.py) * s;
+      applyVB();
+    });
+    svg.addEventListener('pointerup', () => { panning = false; });
+
+    // Mouse wheel zoom
+    svg.addEventListener('wheel', e => {
+      e.preventDefault();
+      const f = e.deltaY > 0 ? 1.08 : 0.92;
+      const rect = svg.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width * vb.w + vb.x;
+      const my = (e.clientY - rect.top) / rect.height * vb.h + vb.y;
+      vb.w *= f; vb.h *= f; clampZoom();
+      vb.x = mx - (e.clientX - rect.left) / rect.width * vb.w;
+      vb.y = my - (e.clientY - rect.top) / rect.height * vb.h;
+      applyVB();
+    }, { passive: false });
+
+    // Pinch-to-zoom + two-finger pan (mobile)
+    let lastPinch = null;
+    const pinchData = (ts) => ({
+      cx: (ts[0].clientX + ts[1].clientX) / 2,
+      cy: (ts[0].clientY + ts[1].clientY) / 2,
+      dist: Math.hypot(ts[1].clientX - ts[0].clientX, ts[1].clientY - ts[0].clientY)
+    });
+    svg.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) { e.preventDefault(); panning = false; lastPinch = pinchData(e.touches); }
+    }, { passive: false });
+    svg.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 && lastPinch) {
+        e.preventDefault();
+        const cur = pinchData(e.touches);
+        const rect = svg.getBoundingClientRect();
+        const scale = lastPinch.dist / cur.dist;
+        // Zoom around pinch midpoint
+        const mx = (cur.cx - rect.left) / rect.width * vb.w + vb.x;
+        const my = (cur.cy - rect.top) / rect.height * vb.h + vb.y;
+        vb.w *= scale; vb.h *= scale; clampZoom();
+        vb.x = mx - (cur.cx - rect.left) / rect.width * vb.w;
+        vb.y = my - (cur.cy - rect.top) / rect.height * vb.h;
+        // Pan from midpoint movement
+        const s = vb.w / rect.width;
+        vb.x -= (cur.cx - lastPinch.cx) * s;
+        vb.y -= (cur.cy - lastPinch.cy) * s;
+        applyVB();
+        lastPinch = cur;
+      }
+    }, { passive: false });
+    svg.addEventListener('touchend', () => { lastPinch = null; });
+  },
+
+  showPanel(id) {
+    const info = NODE_INFO[id];
+    if (!info) return;
+    document.getElementById('panelTitle').textContent = info.title;
+    document.getElementById('panelMeta').textContent = info.meta;
+    document.getElementById('panelDesc').textContent = info.desc;
+    const list = document.getElementById('panelList');
+    list.innerHTML = (info.connections || []).map(c => `<li>${c}</li>`).join('');
+    document.getElementById('graph-panel').classList.add('open');
+    // Highlight edges
+    document.querySelectorAll('#graphEdges .edge').forEach(e => {
+      e.classList.toggle('highlighted', e.dataset.from === id || e.dataset.to === id);
+    });
+  },
+  hidePanel() {
+    document.getElementById('graph-panel').classList.remove('open');
+    document.querySelectorAll('#graphEdges .edge').forEach(e => e.classList.remove('highlighted'));
+  }
+};
+
+/* ============================================================
+   MODULE: TABLE SORT
+   ============================================================ */
+K.mod.table = {
+  init() {
+    this.renderBody();
+    document.querySelectorAll('#kernelTable th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (K.state.sort.col === col) K.state.sort.dir *= -1;
+        else { K.state.sort.col = col; K.state.sort.dir = 1; }
+        this.renderBody();
+        this.updateArrows();
+      });
+    });
+  },
+
+  renderBody() {
+    const { col, dir } = K.state.sort;
+    const sorted = [...TABLE_DATA].sort((a, b) => {
+      const av = a[col], bv = b[col];
+      if (typeof av === 'number') return (av - bv) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
+    const stars = n => '★'.repeat(n) + '☆'.repeat(5-n);
+    const tb = (t) => t.includes('B-rep') ? 'badge-brep' : t.includes('SDF') || t.includes('rep') || t.includes('Implicit') ? 'badge-sdf' : 'badge-brep';
+    const ob = (o) => o === 'Yes' ? 'badge-yes' : o === 'No' ? 'badge-no' : 'badge-api';
+    document.getElementById('kernelBody').innerHTML = sorted.map(k => `<tr>
+      <td style="color:var(--text-primary);font-weight:600">${k.name}</td>
+      <td><span class="badge ${tb(k.type)}">${k.type}</span></td>
+      <td>${k.lang}</td>
+      <td><span class="${ob(k.open)}">${k.open}</span></td>
+      <td class="maturity">${stars(k.maturity)}</td>
+      <td>${k.strength}</td>
+    </tr>`).join('');
+  },
+
+  updateArrows() {
+    const { col, dir } = K.state.sort;
+    document.querySelectorAll('#kernelTable th').forEach(th => {
+      if (th.dataset.col === col) th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+      else th.setAttribute('aria-sort', 'none');
+    });
+  }
+};
+
+/* ============================================================
+   MODULE: NAV + SCROLL
+   ============================================================ */
+K.mod.nav = {
+  init() {
+    const sections = document.querySelectorAll('section');
+    const fill = document.getElementById('progressFill');
+    const links = document.querySelectorAll('nav .nav-links a');
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('in-view');
+          const idx = [...sections].indexOf(e.target);
+          fill.style.width = `${((idx + 1) / sections.length) * 100}%`;
+          links.forEach((l, i) => l.classList.toggle('active', i === idx));
+          // Lazy-init SDF
+          if (e.target.id === 's2') K.mod.sdf.init();
+        } else {
+          e.target.classList.remove('in-view');
+        }
+      });
+    }, { threshold: 0.15 });
+    sections.forEach(s => obs.observe(s));
+  }
+};
+
+/* ============================================================
+   INIT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.classList.add('js-ready');
+
+  K.mod.nav.init();
+  K.mod.graph.init();
+  K.mod.table.init();
+
+  // Validity bars animation
+  setTimeout(() => {
+    document.querySelectorAll('.validity-bar-fill[data-target]').forEach(el => {
+      el.style.width = el.dataset.target + '%';
+    });
+  }, 300);
+
+  // SDF sliders
+  const sB = document.getElementById('sliderBlend');
+  const sO = document.getElementById('sliderOffset');
+  const vB = document.getElementById('valBlend');
+  const vO = document.getElementById('valOffset');
+  let rafId = null;
+  function queueRender() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => { K.mod.sdf.render(); rafId = null; });
+  }
+  if (sB) sB.addEventListener('input', e => { K.state.sdf.blend = +e.target.value; vB.textContent = (+e.target.value).toFixed(2); queueRender(); });
+  if (sO) sO.addEventListener('input', e => { K.state.sdf.offset = +e.target.value; vO.textContent = (+e.target.value).toFixed(2); queueRender(); });
+});
+</script>
+</body>
+</html>
