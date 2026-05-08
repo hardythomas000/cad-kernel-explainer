@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "kind": "codebase",
+  "project": {
+    "name": "cad-kernel-explainer",
+    "languages": [
+      "HTML"
+    ],
+    "frameworks": [
+      "unknown"
+    ],
+    "description": "Generated static file-level graph for mobile viewing.",
+    "analyzedAt": "2026-05-08T13:18:45.7308134Z",
+    "gitCommitHash": "a88361cbd7da825df9bf884f0845bd0b2084bf3b"
+  },
+  "nodes": [
+    {
+      "id": "project:cad-kernel-explainer",
+      "type": "module",
+      "name": "cad-kernel-explainer",
+      "summary": "cad-kernel-explainer project root",
+      "tags": [
+        "project"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:index.html",
+      "type": "document",
+      "name": "index.html",
+      "filePath": "index.html",
+      "summary": "Project file: index.html",
+      "tags": [
+        "root",
+        "HTML"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "project:cad-kernel-explainer",
+      "target": "file:index.html",
+      "type": "contains",
+      "direction": "forward",
+      "description": "Project contains index.html",
+      "weight": 0.7
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:root",
+      "name": "root",
+      "description": "Files under root",
+      "nodeIds": [
+        "file:index.html"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Project overview",
+      "description": "Start at the project node, then inspect major folders/files.",
+      "nodeIds": [
+        "project:cad-kernel-explainer"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Source files",
+      "description": "Use search or the file explorer to jump into specific files.",
+      "nodeIds": [
+        "file:index.html"
+      ]
+    }
+  ]
+}
